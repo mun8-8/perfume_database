@@ -19,6 +19,7 @@ def init_session() -> None:
         "pref_main_scent": None,
         "pref_note_type": None,
         "pref_additional_categories": None,
+        "perf_result_ready": False,  # 추천 결과를 아래에 띄워줄지 제어하는 플래그
     }
     for key, value in defaults.items():
         if key not in st.session_state:

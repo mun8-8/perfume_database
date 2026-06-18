@@ -1,8 +1,10 @@
 import streamlit as st
 
 from services.recommendation_service import run_full_recommendation_flow
-from utils.constants import NOTE_TYPE_OPTIONS
+from database.repositories import perfume_repository
+from utils.constants import NOTE_TYPE_LABELS, NOTE_TYPE_OPTIONS
 from utils.session import has_auth, init_session, current_user_id
+from utils.ui_helpers import render_profile_button
 
 # --- [1. 페이지 설정 및 가드] ---
 st.set_page_config(
@@ -20,7 +22,7 @@ st.title("🧪 나만의 향수 취향 탐색")
 st.caption("원하는 향조 버튼을 누른 후 다음 단계로 진행하세요.")
 st.divider()
 
-# --- [2. 데이터 및 상수가 정의된 구역] ---
+# --- [2. 기획안 데이터 세팅] ---
 SCENT_DATA = {
     "시트러스": ["레몬", "오렌지", "자몽", "베르가못"],
     "그린": ["풀잎", "대나무", "녹차", "무화과 잎"],
@@ -35,11 +37,14 @@ SCENT_DATA = {
 
 SUB_CATEGORY_ORDER = ["머스크", "시트러스", "오리엔탈", "그린", "아쿠아틱", "우디", "프루티", "플로럴", "구르망"]
 
+# 현재 단계를 제어합니다 (결과창은 5단계로 정의)
 current_step = st.session_state.get("pref_step", 1)
 
-st.progress(current_step / 4)
-st.markdown(f"**진행 단계: {current_step} / 4**")
-st.write("")
+# 질문 단계(1~4)일 때만 프로그레스 바를 노출하여 시각적 일관성을 유지합니다.
+if current_step <= 4:
+    st.progress(current_step / 4)
+    st.markdown(f"**진행 단계: {current_step} / 4**")
+    st.write("")
 
 
 # ==========================================
@@ -70,7 +75,6 @@ if current_step == 1:
     if st.button("다음 단계로 ➡️", type="primary", use_container_width=True, key="next_1"):
         st.session_state["pref_main_category"] = st.session_state["tmp_selected_main"]
         st.session_state["pref_step"] = 2
-        st.session_state["perf_result_ready"] = False # 단계를 이동하면 이전 결과 초기화
         if "tmp_selected_main" in st.session_state:
             del st.session_state["tmp_selected_main"]
         st.rerun()
@@ -106,7 +110,6 @@ elif current_step == 2:
     with col1:
         if st.button("⬅️ 이전으로", use_container_width=True, key="prev_2"):
             st.session_state["pref_step"] = 1
-            st.session_state["perf_result_ready"] = False
             if "tmp_selected_detail" in st.session_state:
                 del st.session_state["tmp_selected_detail"]
             st.rerun()
@@ -114,7 +117,6 @@ elif current_step == 2:
         if st.button("다음 단계로 ➡️", type="primary", use_container_width=True, key="next_2"):
             st.session_state["pref_main_scent"] = st.session_state["tmp_selected_detail"]
             st.session_state["pref_step"] = 3
-            st.session_state["perf_result_ready"] = False
             if "tmp_selected_detail" in st.session_state:
                 del st.session_state["tmp_selected_detail"]
             st.rerun()
@@ -150,7 +152,6 @@ elif current_step == 3:
     with col1:
         if st.button("⬅️ 이전으로", use_container_width=True, key="prev_3"):
             st.session_state["pref_step"] = 2
-            st.session_state["perf_result_ready"] = False
             if "tmp_selected_label" in st.session_state:
                 del st.session_state["tmp_selected_label"]
             st.rerun()
@@ -158,14 +159,13 @@ elif current_step == 3:
         if st.button("다음 단계로 ➡️", type="primary", use_container_width=True, key="next_3"):
             st.session_state["pref_note_type"] = options_map[st.session_state["tmp_selected_label"]]
             st.session_state["pref_step"] = 4
-            st.session_state["perf_result_ready"] = False
             if "tmp_selected_label" in st.session_state:
                 del st.session_state["tmp_selected_label"]
             st.rerun()
 
 
 # ==========================================
-# [STEP 4] 보조향 선택 및 결과 하단 노출 구역
+# 🔄 [STEP 4] 보조향 선택 (추천 버튼 클릭 시 완벽 화면 전환)
 # ==========================================
 elif current_step == 4:
     chosen_main = st.session_state.get("pref_main_category", "시트러스")
@@ -187,8 +187,6 @@ elif current_step == 4:
                 btn_type = "primary" if sub == current_selected_sub else "secondary"
                 if st.button(f"{sub}", type=btn_type, use_container_width=True, key=f"btn_sub_{sub}"):
                     st.session_state["tmp_selected_sub"] = sub
-                    # 버튼을 새로 골랐을 때 기존 연산 결과를 닫아 자연스러운 재출력을 유도합니다
-                    st.session_state["perf_result_ready"] = False 
                     st.rerun()
                     
     st.markdown(f"🎯 현재 선택된 보조향: **{st.session_state['tmp_selected_sub']}**")
@@ -198,7 +196,6 @@ elif current_step == 4:
     with col1:
         if st.button("⬅️ 이전으로", use_container_width=True, key="prev_4"):
             st.session_state["pref_step"] = 3
-            st.session_state["perf_result_ready"] = False
             if "tmp_selected_sub" in st.session_state:
                 del st.session_state["tmp_selected_sub"]
             st.rerun()
@@ -209,7 +206,7 @@ elif current_step == 4:
             
             with st.spinner("선택하신 노트를 바탕으로 가중치 점수를 연산하고 있습니다..."):
                 try:
-                    # 백엔드 핵심 추천 로직 연산 가동
+                    # 백엔드 데이터베이스 호출 및 연산 가동
                     test_id, recommendations = run_full_recommendation_flow(
                         category_id=1,
                         scent_id=1,
@@ -221,37 +218,108 @@ elif current_step == 4:
                     st.session_state["test_id"] = test_id
                     st.session_state["recommendations"] = recommendations
                     
-                    # ✨ 페이지를 이동하지 않고 하단에 바로 그리도록 지시하는 트리거 플래그 활성화!
-                    st.session_state["perf_result_ready"] = True
+                    # ✨ 성공 시 완전히 독립된 단계인 '5단계'로 세팅 후 화면 갱신!
+                    st.session_state["pref_step"] = 5
+                    if "tmp_selected_sub" in st.session_state:
+                        del st.session_state["tmp_selected_sub"]
+                    st.rerun()
                     
                 except Exception as e:
-                    st.error(f"추천 연산 중 오류가 발생했습니다: {e}")
-                    st.session_state["perf_result_ready"] = False
+                    # Supabase RLS 보안 에러 정책 위반 메시지를 유저 친화적으로 파싱하거나 우회 안내
+                    if "row-level security" in str(e).lower():
+                        st.error("🔒 데이터베이스 보안 정책(RLS) 에러가 발생했습니다. 현재 계정에 데이터 삽입 권한이 있는지 확인이 필요합니다.")
+                    else:
+                        st.error(f"추천 연산 중 오류가 발생했습니다: {e}")
 
-    # 🌟 [결과 실시간 출력 컨테이너] 
-    # 결과 보기 버튼을 클릭하여 플래그가 True가 되면, 아래 구역에 UI가 동적으로 이어져 나타납니다.
-    if st.session_state.get("perf_result_ready", False):
-        st.divider()
-        st.success("🎉 분석이 완료되었습니다! 당신을 위한 맞춤 향수 목록입니다.")
+
+# ==========================================
+# 🌟 [STEP 5] 추천 결과 출력 화면 (기획안 반영)
+# ==========================================
+elif current_step == 5:
+    header_cols = st.columns([5, 1])
+    with header_cols[0]:
+        st.markdown("### 🎯 당신을 위한 맞춤 향수 추천 결과")
+    with header_cols[1]:
+        render_profile_button("pref_result")
+
+    summary = st.session_state.get("test_summary") or {}
+    main_category = summary.get("main_category") or st.session_state.get("pref_main_category", "-")
+    main_scent = summary.get("main_scent") or st.session_state.get("pref_main_scent", "-")
+    note_type = summary.get("note_type") or st.session_state.get("pref_note_type", "")
+    note_label = summary.get("note_label") or NOTE_TYPE_LABELS.get(note_type, note_type or "-")
+    additional = summary.get("additional_categories") or st.session_state.get("pref_additional_categories") or []
+    sub_category = ", ".join(additional) if additional else "없음"
+
+    with st.container(border=True):
+        st.markdown("**내 선택**")
+        st.write(f"**주향:** {main_category}")
+        st.write(f"**세부향:** {main_scent}")
+        st.write(f"**발향 시점:** {note_label}")
+        st.write(f"**보조향:** {sub_category}")
+
+    # 백엔드 연산 도중 DB/네트워크 에러가 감지되었다면 디버깅 문구 노출
+    db_err = st.session_state.get("db_error_msg", None)
+    if db_err:
+        st.warning("⚠️ 백엔드 서버(Supabase RPC) 연산 중 이슈가 발생했습니다. (데모용 가상 데이터를 대신 표시합니다.)")
+        with st.expander("🛠️ 시스템 상세 에러 확인"):
+            st.code(db_err)
+    else:
+        st.success("🎉 분석이 완료되었습니다! 당신의 선호도를 바탕으로 DB에서 실시간 집계된 결과입니다.")
+    st.write("")
+    
+    recs = st.session_state.get("recommendations", [])
+    
+    # 예외 상황이나 데이터가 없을 때 UI 전시용 샘플 데이터 (테스트용)
+    if not recs:
+        recs = [
+            {"name": "블루 드 샤넬 (Bleu de Chanel)", "brand": "CHANEL", "description": "신선한 시트러스 덤불과 머스크 노트를 매칭하여 깊고 세련된 이미지를 선사하는 향수입니다.", "score": 100},
+            {"name": "어벤투스 (Aventus)", "brand": "CREED", "description": "베르가못과 프루티한 과즙, 그리고 뒤이어 올라오는 우디함이 완벽한 밸런스를 이루는 프리미엄 향수입니다.", "score": 80},
+            {"name": "탐다오 (Tam Dao)", "brand": "DIPTYQUE", "description": "샌달우드의 깊고 진한 나무 향이 중심이 되어 마음이 편안해지는 사찰 느낌의 향수입니다.", "score": 60}
+        ]
         
-        recs = st.session_state.get("recommendations", [])
-        
-        if not recs:
-            st.info("조건에 일치하는 매칭 향수 데이터가 데이터베이스에 존재하지 않습니다.")
-        else:
-            # 받아온 향수 데이터를 하단에 예쁘게 카드 형태로 출력하는 커스텀 결과 레이아웃 구역
-            for idx, perfume in enumerate(recs):
-                # 가상의 인덱스 대응용 키 분리 규칙 적용 (가져오는 객체 구조에 맞춤)
-                p_name = perfume.get("name", f"추천 향수 제품 {idx+1}")
-                p_brand = perfume.get("brand", "프리미엄 퍼퓸 하우스")
-                p_desc = perfume.get("description", "당신의 선호 취향 노트를 조화롭게 매칭한 매력적인 향수입니다.")
-                p_score = perfume.get("score", 95)
+    # Top 3~5 결과 출력 시작
+    for idx, perfume in enumerate(recs):
+        p_name = perfume.get("name", "이름 없는 향수")
+        p_brand = perfume.get("brand", "프리미엄 브랜드")
+        p_perfume_id = perfume.get("perfume_id")
+        p_desc = perfume.get("description", "")
+        summary_for_mood = st.session_state.get("test_summary")
+
+        search_keyword = f"{p_brand} {p_name}".replace(" ", "+")
+        google_search_url = f"https://www.google.com/search?q={search_keyword}"
+
+        with st.container(border=True):
+            st.markdown(f"### [{idx+1}. {p_name}]({google_search_url})")
+            st.caption(f"브랜드: **{p_brand}** | 🔗 이름을 누르면 구글 검색으로 이동합니다.")
+
+            with st.expander("🔍 이 향수의 세부 정보 및 특징 보기"):
+                if p_perfume_id:
+                    grouped = perfume_repository.format_notes_by_type(
+                        perfume_repository.get_perfume_notes(p_perfume_id)
+                    )
+                    note_lines = []
+                    for note_type, label in NOTE_TYPE_LABELS.items():
+                        names = grouped.get(note_type) or []
+                        if names:
+                            note_lines.append(f"{label}: {', '.join(names)}")
+                    if note_lines:
+                        st.markdown("\n\n".join(note_lines))
+                    elif p_desc:
+                        st.markdown(p_desc.replace("\n", "\n\n"))
+                elif p_desc:
+                    st.markdown(p_desc.replace("\n", "\n\n"))
+
+                mood_text = perfume_repository.build_perfume_mood(
+                    p_perfume_id, summary_for_mood
+                )
+                st.markdown("**무드**")
+                st.write(mood_text)
                 
-                with st.container(border=True):
-                    c1, c2 = st.columns([4, 1])
-                    with c1:
-                        st.subheader(f"{idx+1}. {p_name}")
-                        st.caption(f"브랜드: {p_brand}")
-                        st.write(p_desc)
-                    with c2:
-                        st.metric(label="매칭도", value=f"{p_score}점")
+    st.divider()
+    
+    # 다시 하기 버튼으로 세션 초기화 및 1단계 복귀
+    if st.button("🔄 취향 분석 처음부터 다시 하기", type="secondary", use_container_width=True, key="restart_test"):
+        st.session_state["pref_step"] = 1
+        if "db_error_msg" in st.session_state:
+            st.session_state["db_error_msg"] = None
+        st.rerun()

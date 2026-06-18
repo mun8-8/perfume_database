@@ -7,11 +7,22 @@ from utils.session import is_logged_in
 
 
 def render_profile_button(key_suffix: str = "") -> None:
+    """우측 상단 프로필 — 회원은 프로필 페이지, 비회원은 로그인 페이지로 이동."""
+    key = f"profile_btn_{key_suffix}"
     if is_logged_in():
-        if st.button("👤 프로필", key=f"profile_btn_{key_suffix}"):
-            st.switch_page("pages/04_profile.py")
+        st.page_link(
+            "pages/04_profile.py",
+            label="👤 프로필",
+            use_container_width=True,
+        )
     else:
-        st.caption("👤 프로필 (회원 전용)")
+        if st.button(
+            "👤 프로필",
+            key=key,
+            use_container_width=True,
+            help="로그인 후 이용할 수 있습니다.",
+        ):
+            st.switch_page("pages/01_auth.py")
 
 
 def render_perfume_card(

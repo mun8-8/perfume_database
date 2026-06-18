@@ -2,7 +2,18 @@ from database.supabase_client import get_supabase
 
 
 def upsert_user(user_id: str, email: str, nickname: str) -> None:
-    get_supabase().table("users").upsert(
+    """로그인 세션(JWT) 기준으로 프로필 저장. RPC 우선, 실패 시 테이블 upsert."""
+    client = get_supabase()
+    try:
+        client.rpc(
+            "upsert_user_profile",
+            {"p_email": email, "p_nickname": nickname},
+        ).execute()
+        return
+    except Exception:
+        pass
+
+    client.table("users").upsert(
         {
             "user_id": user_id,
             "email": email,
