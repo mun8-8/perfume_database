@@ -32,11 +32,15 @@ with right:
         st.markdown("### 내 프로필")
         st.caption("회원 전용")
         st.write("즐겨찾기, 이전 추천 기록, 로그아웃을 관리합니다.")
+        
+        # 💡 [요구사항 반영]: 로그인 여부에 따라 버튼의 액션을 다르게 처리
         if is_logged_in():
             if st.button("프로필 열기", use_container_width=True):
                 st.switch_page("pages/04_profile.py")
         else:
-            st.button("로그인 후 이용 가능", disabled=True, use_container_width=True)
+            # 로그인이 안 되어 있을 때도 버튼을 누를 수 있게 만들고, 누르면 로그인 창으로 연동
+            if st.button("로그인 후 이용 가능 (로그인하러 가기)", type="secondary", use_container_width=True):
+                st.switch_page("pages/01_auth.py")
 
 if has_auth():
     mode = "회원" if is_logged_in() else "비회원"
