@@ -8,7 +8,7 @@ from database.repositories import (
     user_repository,
 )
 from database.supabase_client import ensure_authenticated_session
-from services import auth_service
+from services.auth_service import auth_service
 from utils.session import clear_auth, init_session, is_logged_in
 from utils.theme import apply_page_theme
 from utils.ui_helpers import (
@@ -50,6 +50,27 @@ email = (profile or {}).get("email") or st.session_state.get("user_email", "")
 st.subheader("계정 정보")
 st.write(f"**닉네임:** {nickname}")
 st.write(f"**이메일:** {email}")
+
+with st.expander("비밀번호 변경", expanded=False):
+    st.caption("로그인 상태에서 이메일 인증 없이 변경할 수 있습니다.")
+    with st.form("change_password_form"):
+        new_password = st.text_input("새 비밀번호", type="password", placeholder="6자 이상")
+        confirm_password = st.text_input("새 비밀번호 확인", type="password")
+        submit_pw = st.form_submit_button("비밀번호 변경", use_container_width=True)
+
+    if submit_pw:
+        if not new_password or not confirm_password:
+            st.error("새 비밀번호를 입력해 주세요.")
+        elif new_password != confirm_password:
+            st.error("비밀번호 확인이 일치하지 않습니다.")
+        elif len(new_password) < 6:
+            st.error("비밀번호는 최소 6자 이상이어야 합니다.")
+        else:
+            ok, msg = auth_service.change_password(new_password)
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
 
 st.divider()
 st.subheader("즐겨찾기")

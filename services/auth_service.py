@@ -1,7 +1,7 @@
 """Supabase Auth 연동."""
 
 from database.repositories import user_repository
-from database.supabase_client import get_supabase
+from database.supabase_client import get_supabase, ensure_authenticated_session
 
 
 def format_auth_error(exc: Exception) -> str:
@@ -34,17 +34,6 @@ def format_auth_error(exc: Exception) -> str:
     return raw
 
 
-def get_password_reset_redirect_url() -> str:
-    """비밀번호 재설정 후 돌아올 앱 URL."""
-    try:
-        import streamlit as st
-
-        base = st.secrets.get("APP_URL", "http://localhost:8501").rstrip("/")
-    except Exception:
-        base = "http://localhost:8501"
-    return f"{base}/05_password_reset"
-
-
 class AuthService:
     """01_auth 페이지에서 사용하는 (success, payload) 형태 래퍼."""
 
@@ -68,31 +57,10 @@ class AuthService:
         except Exception as exc:
             return False, format_auth_error(exc)
 
-    def request_password_reset(self, email: str) -> tuple[bool, str]:
+    def change_password(self, new_password: str) -> tuple[bool, str]:
         try:
-            request_password_reset(email)
-            return (
-                True,
-                "비밀번호 재설정 메일을 발송했습니다. "
-                "메일의 링크를 누르거나, 인증 코드와 함께 비밀번호 재설정 페이지에서 새 비밀번호를 설정하세요.",
-            )
-        except Exception as exc:
-            return False, format_auth_error(exc)
-
-    def reset_password_with_token(
-        self, email: str, token: str, new_password: str
-    ) -> tuple[bool, str]:
-        try:
-            verify_recovery_otp(email, token)
-            update_password(new_password)
-            return True, "비밀번호가 변경되었습니다. 로그인 탭에서 새 비밀번호로 로그인하세요."
-        except Exception as exc:
-            return False, format_auth_error(exc)
-
-    def reset_password_in_recovery_session(self, new_password: str) -> tuple[bool, str]:
-        try:
-            update_password(new_password)
-            return True, "비밀번호가 변경되었습니다. 로그인 탭에서 새 비밀번호로 로그인하세요."
+            change_password(new_password)
+            return True, "비밀번호가 변경되었습니다."
         except Exception as exc:
             return False, format_auth_error(exc)
 
@@ -195,32 +163,8 @@ def sign_out(access_token: str | None, refresh_token: str | None) -> None:
         pass
 
 
-def request_password_reset(email: str) -> None:
-    client = get_supabase()
-    client.auth.reset_password_for_email(
-        email,
-        {"redirect_to": get_password_reset_redirect_url()},
-    )
-
-
-def verify_recovery_otp(email: str, token: str) -> None:
-    client = get_supabase()
-    response = client.auth.verify_otp(
-        {"email": email, "token": token.strip(), "type": "recovery"}
-    )
-    if not response.session:
-        raise RuntimeError("인증 코드가 올바르지 않거나 만료되었습니다.")
-
-
-def update_password(new_password: str) -> None:
+def change_password(new_password: str) -> None:
     if len(new_password) < 6:
         raise ValueError("비밀번호는 최소 6자 이상이어야 합니다.")
-    client = get_supabase()
-    client.auth.update_user({"password": new_password})
-
-
-def establish_recovery_session(access_token: str, refresh_token: str) -> None:
-    client = get_supabase()
-    response = client.auth.set_session(access_token, refresh_token)
-    if not response.session:
-        raise RuntimeError("재설정 세션을 시작할 수 없습니다.")
+    ensure_authenticated_session()
+    get_supabase().auth.update_user({"password": new_password})
