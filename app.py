@@ -1,6 +1,7 @@
 import streamlit as st
 
 from utils.session import has_auth, init_session, is_logged_in
+from utils.theme import apply_page_theme
 
 st.set_page_config(
     page_title="향수 취향 탐색",
@@ -8,6 +9,7 @@ st.set_page_config(
     layout="wide",
 )
 init_session()
+apply_page_theme()
 
 st.markdown("## 나만의 향수 추천")
 st.markdown(

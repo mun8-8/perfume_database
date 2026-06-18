@@ -1,7 +1,8 @@
-from database.supabase_client import get_supabase
+from database.supabase_client import ensure_authenticated_session, get_supabase
 
 
 def get_saved_perfume_ids(user_id: str) -> set[int]:
+    ensure_authenticated_session()
     response = (
         get_supabase()
         .table("saved_perfumes")
@@ -13,6 +14,7 @@ def get_saved_perfume_ids(user_id: str) -> set[int]:
 
 
 def list_saved_perfumes(user_id: str) -> list[dict]:
+    ensure_authenticated_session()
     response = (
         get_supabase()
         .table("saved_perfumes")
@@ -27,6 +29,7 @@ def list_saved_perfumes(user_id: str) -> list[dict]:
 
 
 def save_perfume(user_id: str, perfume_id: int) -> None:
+    ensure_authenticated_session()
     get_supabase().table("saved_perfumes").upsert(
         {"user_id": user_id, "perfume_id": perfume_id},
         on_conflict="user_id,perfume_id",
@@ -34,6 +37,7 @@ def save_perfume(user_id: str, perfume_id: int) -> None:
 
 
 def remove_saved_perfume(user_id: str, perfume_id: int) -> None:
+    ensure_authenticated_session()
     (
         get_supabase()
         .table("saved_perfumes")

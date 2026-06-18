@@ -2,6 +2,7 @@ import streamlit as st
 
 from services.auth_service import auth_service
 from utils.session import has_auth, init_session, set_guest, set_member
+from utils.theme import apply_page_theme
 
 # --- [초기 설정] ---
 st.set_page_config(
@@ -10,6 +11,7 @@ st.set_page_config(
     layout="centered",
 )
 init_session()
+apply_page_theme()
 
 # 안전장치: 이미 인증 세션이 활성화되어 있다면 곧바로 3번(주향 선택) 단계로 리다이렉트
 if has_auth():
@@ -23,7 +25,9 @@ st.markdown(
 st.divider()
 
 # --- [2번 기능: 탭 UI 구성] ---
-tab_guest, tab_login, tab_signup = st.tabs(["💡 비회원 시작", "🔓 로그인", "📝 회원가입"])
+tab_guest, tab_login, tab_signup, tab_reset = st.tabs(
+    ["💡 비회원 시작", "🔓 로그인", "📝 회원가입", "🔑 비밀번호 찾기"]
+)
 
 # ==========================================
 # 1. 비회원 시작 탭
@@ -62,6 +66,9 @@ with tab_login:
         ).strip()
         
         submit_login = st.form_submit_button("로그인 후 시작하기", type="primary", use_container_width=True)
+
+    if st.button("비밀번호를 잊으셨나요?", type="tertiary"):
+        st.switch_page("pages/05_password_reset.py")
 
     if submit_login:
         if not login_email or not login_password:
@@ -139,3 +146,38 @@ with tab_signup:
                     st.success(f"✨ {message}")
                 else:
                     st.error(message)
+
+
+# ==========================================
+# 4. 비밀번호 찾기 탭
+# ==========================================
+with tab_reset:
+    st.markdown("### 비밀번호 재설정")
+    st.caption("가입한 이메일로 재설정 링크를 보내드립니다.")
+
+    with st.form("reset_request_form"):
+        reset_email = st.text_input(
+            "가입 이메일",
+            placeholder="example@domain.com",
+        ).strip()
+        submit_reset = st.form_submit_button(
+            "재설정 메일 보내기", type="primary", use_container_width=True
+        )
+
+    if submit_reset:
+        if not reset_email:
+            st.error("이메일을 입력해 주세요.")
+        else:
+            with st.spinner("메일 발송 중..."):
+                ok, msg = auth_service.request_password_reset(reset_email)
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+
+    st.info(
+        "메일의 링크를 누르면 **비밀번호 재설정** 페이지로 이동합니다. "
+        "링크가 열리지 않으면 메일의 인증 코드를 복사해 재설정 페이지에서 입력하세요."
+    )
+    if st.button("비밀번호 재설정 페이지 열기", use_container_width=True):
+        st.switch_page("pages/05_password_reset.py")

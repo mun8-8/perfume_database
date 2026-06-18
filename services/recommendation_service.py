@@ -41,18 +41,21 @@ def _resolve_selection_ids(
 
 
 def _score_perfumes(
+    main_category_id: int,
     main_scent_id: int,
     preferred_note_type: str,
     additional_category_ids: list[int],
 ) -> list[dict]:
     try:
         return recommendation_repository.score_perfumes_via_rpc(
+            main_category_id,
             main_scent_id,
             preferred_note_type,
             additional_category_ids,
         )
     except Exception:
         return recommendation_repository.score_perfumes_via_join_query(
+            main_category_id,
             main_scent_id,
             preferred_note_type,
             additional_category_ids,
@@ -107,7 +110,11 @@ def run_full_recommendation_flow(
     )
 
     test_id: int | None = None
+    save_error: str | None = None
     if user_id:
+        from database.supabase_client import ensure_authenticated_session
+
+        ensure_authenticated_session()
         try:
             test_id = preference_repository.create_user_preference_test(user_id)
             preference_repository.save_main_choice(
@@ -120,10 +127,12 @@ def run_full_recommendation_flow(
                 test_id,
                 resolved_additional_ids,
             )
-        except Exception:
+        except Exception as exc:
             test_id = None
+            save_error = str(exc)
 
     scored_rows = _score_perfumes(
+        main_category_id,
         main_scent_id,
         note_type,
         resolved_additional_ids,
@@ -132,8 +141,14 @@ def run_full_recommendation_flow(
     if test_id and scored_rows:
         try:
             recommendation_repository.save_recommendation_results(test_id, scored_rows)
-        except Exception:
-            pass
+        except Exception as exc:
+            if save_error is None:
+                save_error = str(exc)
+
+    if save_error:
+        st.session_state["history_save_error"] = save_error
+    else:
+        st.session_state.pop("history_save_error", None)
 
     recommendations = _build_recommendation_cards(scored_rows)
 
@@ -148,6 +163,16 @@ def run_full_recommendation_flow(
             f"{main_cat} - {detail_scent} ({note_label}) / "
             f"{', '.join(sub_categories) if sub_categories else '없음'}"
         ),
+    }
+    st.session_state["recommendation_context"] = {
+        "main_category": main_cat,
+        "main_scent": detail_scent,
+        "note_type": note_type,
+        "note_label": note_label,
+        "additional_categories": sub_categories,
+        "main_category_id": main_category_id,
+        "main_scent_id": main_scent_id,
+        "additional_category_ids": resolved_additional_ids,
     }
 
     return test_id, recommendations

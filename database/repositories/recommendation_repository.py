@@ -1,19 +1,21 @@
 from pathlib import Path
 
-from database.supabase_client import get_supabase
+from database.supabase_client import ensure_authenticated_session, get_supabase
 
 SQL_DIR = Path(__file__).resolve().parents[2] / "sql"
 
 
 def score_perfumes_via_rpc(
+    main_category_id: int,
     main_scent_id: int,
     preferred_note_type: str,
     additional_category_ids: list[int],
 ) -> list[dict]:
-    """Supabase SQL 함수 recommend_perfumes 호출."""
+    """Supabase SQL 함수 recommend_perfumes 호출 (30/30/20/20)."""
     response = get_supabase().rpc(
         "recommend_perfumes",
         {
+            "p_main_category_id": main_category_id,
             "p_main_scent_id": main_scent_id,
             "p_preferred_note_type": preferred_note_type,
             "p_additional_category_ids": additional_category_ids or [],
@@ -23,15 +25,12 @@ def score_perfumes_via_rpc(
 
 
 def score_perfumes_via_join_query(
+    main_category_id: int,
     main_scent_id: int,
     preferred_note_type: str,
     additional_category_ids: list[int],
 ) -> list[dict]:
-    """
-    RPC 미설치 시 동작하는 fallback.
-    PostgREST 로 perfume_notes + scents 조인 데이터를 가져온 뒤
-    SQL 스코어링과 동일한 규칙으로 집계합니다.
-    """
+    """RPC 미설치 시 Python fallback — SQL과 동일한 30/30/20/20 규칙."""
     response = (
         get_supabase()
         .table("perfume_notes")
@@ -53,29 +52,35 @@ def score_perfumes_via_join_query(
         if perfume_id not in scores:
             scores[perfume_id] = {
                 "perfume_id": perfume_id,
-                "has_main_scent": False,
-                "has_main_scent_with_note": False,
-                "additional_category_match_count": 0,
-                "matched_additional_categories": set(),
+                "has_main_category": False,
+                "has_detail_scent": False,
+                "has_note_match": False,
+                "has_sub_category": False,
             }
 
         entry = scores[perfume_id]
 
-        if scent_id == main_scent_id:
-            entry["has_main_scent"] = True
-            if note_type == preferred_note_type:
-                entry["has_main_scent_with_note"] = True
+        if category_id == main_category_id:
+            entry["has_main_category"] = True
 
-        if category_id in additional_set:
-            entry["matched_additional_categories"].add(category_id)
+        if scent_id == main_scent_id:
+            entry["has_detail_scent"] = True
+            if note_type == preferred_note_type:
+                entry["has_note_match"] = True
+
+        if (
+            category_id in additional_set
+            and category_id != main_category_id
+        ):
+            entry["has_sub_category"] = True
 
     results: list[dict] = []
     for entry in scores.values():
-        additional_count = len(entry["matched_additional_categories"])
         score = (
-            (50 if entry["has_main_scent"] else 0)
-            + (30 if entry["has_main_scent_with_note"] else 0)
-            + (additional_count * 10)
+            (30 if entry["has_main_category"] else 0)
+            + (30 if entry["has_detail_scent"] else 0)
+            + (20 if entry["has_note_match"] else 0)
+            + (20 if entry["has_sub_category"] else 0)
         )
         if score > 0:
             results.append(
@@ -93,6 +98,7 @@ def save_recommendation_results(test_id: int, recommendations: list[dict]) -> No
     if not recommendations:
         return
 
+    ensure_authenticated_session()
     rows = [
         {
             "test_id": test_id,

@@ -1,5 +1,6 @@
 from database.supabase_client import get_supabase
 from utils.constants import NOTE_TYPE_LABELS
+from utils.perfume_mood_catalog import lookup_perfume_mood
 
 
 def get_perfumes_by_ids(perfume_ids: list[int]) -> dict[int, dict]:
@@ -45,7 +46,27 @@ def get_perfume_moods(perfume_id: int) -> list[str]:
     return moods
 
 
-def build_perfume_mood(perfume_id: int | None, summary: dict | None = None) -> str:
+def build_perfume_mood(
+    perfume_id: int | None,
+    summary: dict | None = None,
+    *,
+    perfume_name: str | None = None,
+    brand_name: str | None = None,
+) -> str:
+    name = perfume_name
+    brand = brand_name
+
+    if perfume_id and (not name or not brand):
+        perfumes = get_perfumes_by_ids([perfume_id])
+        row = perfumes.get(perfume_id) or {}
+        name = name or row.get("perfume_name")
+        brand = brand or row.get("brand_name")
+
+    if name:
+        catalog_mood = lookup_perfume_mood(brand or "", name)
+        if catalog_mood:
+            return catalog_mood
+
     if perfume_id:
         moods = get_perfume_moods(perfume_id)
         if moods:

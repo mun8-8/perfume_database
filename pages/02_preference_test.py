@@ -1,10 +1,30 @@
 import streamlit as st
 
 from services.recommendation_service import run_full_recommendation_flow
-from database.repositories import perfume_repository
-from utils.constants import NOTE_TYPE_LABELS, NOTE_TYPE_OPTIONS
-from utils.session import has_auth, init_session, current_user_id
-from utils.ui_helpers import render_profile_button
+from database.repositories import favorite_repository, perfume_repository
+from utils.constants import (
+    NOTE_TYPE_DESCRIPTIONS,
+    NOTE_TYPE_ENGLISH_LABELS,
+    NOTE_TYPE_LABELS,
+    NOTE_TYPE_OPTIONS,
+)
+from utils.scent_descriptions import (
+    CATEGORY_DESCRIPTIONS,
+    CATEGORY_ENGLISH_LABELS,
+    SCENT_DESCRIPTIONS,
+    SUB_CATEGORY_DESCRIPTIONS,
+    scent_english_label,
+)
+from utils.scent_theme import CATEGORY_SLUG, detail_slug
+from utils.session import has_auth, init_session, current_user_id, is_logged_in, reset_preference_wizard
+from utils.theme import apply_page_theme
+from utils.recommendation_reasons import build_recommendation_reasons
+from utils.ui_helpers import (
+    render_favorite_star,
+    render_profile_button,
+    render_scent_description_panel,
+    render_themed_choice_button,
+)
 
 # --- [1. 페이지 설정 및 가드] ---
 st.set_page_config(
@@ -13,6 +33,7 @@ st.set_page_config(
     layout="centered"
 )
 init_session()
+apply_page_theme()
 
 if not has_auth():
     st.warning("로그인 또는 비회원 시작이 필요한 페이지입니다.")
@@ -52,31 +73,46 @@ if current_step <= 4:
 # ==========================================
 if current_step == 1:
     st.markdown("### 1. 가장 선호하는 주향을 고르세요")
-    
+
     main_categories = list(SCENT_DATA.keys())
     if "tmp_selected_main" not in st.session_state:
-        st.session_state["tmp_selected_main"] = main_categories[0]
-        
+        st.session_state["tmp_selected_main"] = None
+
     current_selected = st.session_state["tmp_selected_main"]
-    
+
     for i in range(0, len(main_categories), 3):
         row_categories = main_categories[i:i+3]
         cols = st.columns(3)
         for idx, cat in enumerate(row_categories):
             with cols[idx]:
-                btn_type = "primary" if cat == current_selected else "secondary"
-                if st.button(f"{cat}", type=btn_type, use_container_width=True, key=f"btn_{cat}"):
+                key = f"main_{CATEGORY_SLUG[cat]}"
+                if render_themed_choice_button(
+                    cat, key, cat, selected=(cat == current_selected)
+                ):
                     st.session_state["tmp_selected_main"] = cat
                     st.rerun()
 
-    st.markdown(f"🎯 현재 선택된 향조: **{st.session_state['tmp_selected_main']}**")
+    if current_selected:
+        render_scent_description_panel(
+            f"현재 선택된 향조: {current_selected}",
+            CATEGORY_DESCRIPTIONS.get(current_selected, []),
+            current_selected,
+            subtitle=CATEGORY_ENGLISH_LABELS.get(current_selected),
+        )
+    else:
+        st.caption("아직 선택하지 않았습니다. 원하는 주향 버튼을 눌러 주세요.")
     st.write("")
-    
-    if st.button("다음 단계로 ➡️", type="primary", use_container_width=True, key="next_1"):
-        st.session_state["pref_main_category"] = st.session_state["tmp_selected_main"]
+
+    if st.button(
+        "다음 단계로 ➡️",
+        type="primary",
+        use_container_width=True,
+        key="next_1",
+        disabled=not current_selected,
+    ):
+        st.session_state["pref_main_category"] = current_selected
         st.session_state["pref_step"] = 2
-        if "tmp_selected_main" in st.session_state:
-            del st.session_state["tmp_selected_main"]
+        st.session_state.pop("tmp_selected_main", None)
         st.rerun()
 
 
@@ -84,41 +120,56 @@ if current_step == 1:
 # [STEP 2] 세부향 선택
 # ==========================================
 elif current_step == 2:
-    chosen_main = st.session_state.get("pref_main_category", "시트러스")
+    chosen_main = st.session_state.get("pref_main_category")
     st.markdown(f"### 2. '{chosen_main}' 계열의 세부향을 선택하세요")
-    
+
     detail_options = SCENT_DATA.get(chosen_main, [])
     if "tmp_selected_detail" not in st.session_state:
-        st.session_state["tmp_selected_detail"] = detail_options[0]
-        
+        st.session_state["tmp_selected_detail"] = None
+
     current_selected_detail = st.session_state["tmp_selected_detail"]
-    
+
     for i in range(0, len(detail_options), 2):
         row_details = detail_options[i:i+2]
         cols = st.columns(2)
         for idx, det in enumerate(row_details):
             with cols[idx]:
-                btn_type = "primary" if det == current_selected_detail else "secondary"
-                if st.button(f"{det}", type=btn_type, use_container_width=True, key=f"btn_det_{det}"):
+                key = detail_slug(det)
+                if render_themed_choice_button(
+                    det, key, chosen_main, selected=(det == current_selected_detail)
+                ):
                     st.session_state["tmp_selected_detail"] = det
                     st.rerun()
-                    
-    st.markdown(f"🎯 현재 선택된 세부향: **{st.session_state['tmp_selected_detail']}**")
+
+    if current_selected_detail:
+        render_scent_description_panel(
+            f"현재 선택된 세부향: {current_selected_detail}",
+            SCENT_DESCRIPTIONS.get(current_selected_detail, []),
+            chosen_main,
+            subtitle=scent_english_label(current_selected_detail),
+        )
+    else:
+        st.caption("아직 선택하지 않았습니다. 원하는 세부향 버튼을 눌러 주세요.")
     st.write("")
-    
+
     col1, col2 = st.columns(2)
     with col1:
         if st.button("⬅️ 이전으로", use_container_width=True, key="prev_2"):
             st.session_state["pref_step"] = 1
-            if "tmp_selected_detail" in st.session_state:
-                del st.session_state["tmp_selected_detail"]
+            st.session_state.pop("pref_main_category", None)
+            st.session_state.pop("tmp_selected_detail", None)
             st.rerun()
     with col2:
-        if st.button("다음 단계로 ➡️", type="primary", use_container_width=True, key="next_2"):
-            st.session_state["pref_main_scent"] = st.session_state["tmp_selected_detail"]
+        if st.button(
+            "다음 단계로 ➡️",
+            type="primary",
+            use_container_width=True,
+            key="next_2",
+            disabled=not current_selected_detail,
+        ):
+            st.session_state["pref_main_scent"] = current_selected_detail
             st.session_state["pref_step"] = 3
-            if "tmp_selected_detail" in st.session_state:
-                del st.session_state["tmp_selected_detail"]
+            st.session_state.pop("tmp_selected_detail", None)
             st.rerun()
 
 
@@ -127,40 +178,55 @@ elif current_step == 2:
 # ==========================================
 elif current_step == 3:
     st.markdown("### 3. 주향이 언제 가장 돋보이기를 원하시나요?")
-    
-    options_map = {label: key for key, label in NOTE_TYPE_OPTIONS}
-    labels_list = list(options_map.keys())
-    
-    if "tmp_selected_label" not in st.session_state:
-        st.session_state["tmp_selected_label"] = labels_list[0]
-        
-    current_selected_label = st.session_state["tmp_selected_label"]
-    
+
+    if "tmp_selected_note" not in st.session_state:
+        st.session_state["tmp_selected_note"] = None
+
+    current_selected_note = st.session_state["tmp_selected_note"]
+
     cols = st.columns(3)
-    for idx, label in enumerate(labels_list):
+    for idx, (note_key, label) in enumerate(NOTE_TYPE_OPTIONS):
         with cols[idx]:
-            s_key = label.split(' ')[0]
-            btn_type = "primary" if label == current_selected_label else "secondary"
-            if st.button(f"{label}", type=btn_type, use_container_width=True, key=f"btn_lbl_{s_key}"):
-                st.session_state["tmp_selected_label"] = label
+            if render_themed_choice_button(
+                label,
+                f"note_{note_key}",
+                note_key,
+                selected=(note_key == current_selected_note),
+                theme_map="note",
+            ):
+                st.session_state["tmp_selected_note"] = note_key
                 st.rerun()
-                
-    st.markdown(f"🎯 현재 선택된 발향시점: **{st.session_state['tmp_selected_label']}**")
+
+    if current_selected_note:
+        render_scent_description_panel(
+            f"현재 선택된 발향시점: {NOTE_TYPE_LABELS[current_selected_note]}",
+            NOTE_TYPE_DESCRIPTIONS.get(current_selected_note, []),
+            current_selected_note,
+            theme_map="note",
+            subtitle=NOTE_TYPE_ENGLISH_LABELS.get(current_selected_note),
+        )
+    else:
+        st.caption("아직 선택하지 않았습니다. 원하는 발향 시점 버튼을 눌러 주세요.")
     st.write("")
-    
+
     col1, col2 = st.columns(2)
     with col1:
         if st.button("⬅️ 이전으로", use_container_width=True, key="prev_3"):
             st.session_state["pref_step"] = 2
-            if "tmp_selected_label" in st.session_state:
-                del st.session_state["tmp_selected_label"]
+            st.session_state.pop("pref_main_scent", None)
+            st.session_state.pop("tmp_selected_note", None)
             st.rerun()
     with col2:
-        if st.button("다음 단계로 ➡️", type="primary", use_container_width=True, key="next_3"):
-            st.session_state["pref_note_type"] = options_map[st.session_state["tmp_selected_label"]]
+        if st.button(
+            "다음 단계로 ➡️",
+            type="primary",
+            use_container_width=True,
+            key="next_3",
+            disabled=not current_selected_note,
+        ):
+            st.session_state["pref_note_type"] = current_selected_note
             st.session_state["pref_step"] = 4
-            if "tmp_selected_label" in st.session_state:
-                del st.session_state["tmp_selected_label"]
+            st.session_state.pop("tmp_selected_note", None)
             st.rerun()
 
 
@@ -168,42 +234,58 @@ elif current_step == 3:
 # 🔄 [STEP 4] 보조향 선택 (추천 버튼 클릭 시 완벽 화면 전환)
 # ==========================================
 elif current_step == 4:
-    chosen_main = st.session_state.get("pref_main_category", "시트러스")
+    chosen_main = st.session_state.get("pref_main_category")
     st.markdown("### 4. 향을 다채롭게 채워줄 보조향을 선택하세요")
-    
+
     available_subs = [cat for cat in SUB_CATEGORY_ORDER if cat != chosen_main]
     st.info(f"현재 주향으로 **[{chosen_main}]**을 선택하셨기 때문에, 보조향 옵션에서 제외되었습니다.")
-    
+
     if "tmp_selected_sub" not in st.session_state:
-        st.session_state["tmp_selected_sub"] = available_subs[0]
-        
+        st.session_state["tmp_selected_sub"] = None
+
     current_selected_sub = st.session_state["tmp_selected_sub"]
-    
+
     for i in range(0, len(available_subs), 4):
         row_subs = available_subs[i:i+4]
         cols = st.columns(4)
         for idx, sub in enumerate(row_subs):
             with cols[idx]:
-                btn_type = "primary" if sub == current_selected_sub else "secondary"
-                if st.button(f"{sub}", type=btn_type, use_container_width=True, key=f"btn_sub_{sub}"):
+                key = f"sub_{CATEGORY_SLUG[sub]}"
+                if render_themed_choice_button(
+                    sub, key, sub, selected=(sub == current_selected_sub)
+                ):
                     st.session_state["tmp_selected_sub"] = sub
                     st.rerun()
-                    
-    st.markdown(f"🎯 현재 선택된 보조향: **{st.session_state['tmp_selected_sub']}**")
+
+    if current_selected_sub:
+        render_scent_description_panel(
+            f"현재 선택된 보조향: {current_selected_sub}",
+            SUB_CATEGORY_DESCRIPTIONS.get(current_selected_sub, []),
+            current_selected_sub,
+            subtitle=CATEGORY_ENGLISH_LABELS.get(current_selected_sub),
+        )
+    else:
+        st.caption("아직 선택하지 않았습니다. 원하는 보조향 버튼을 눌러 주세요.")
     st.write("")
-    
+
     col1, col2 = st.columns(2)
     with col1:
         if st.button("⬅️ 이전으로", use_container_width=True, key="prev_4"):
             st.session_state["pref_step"] = 3
-            if "tmp_selected_sub" in st.session_state:
-                del st.session_state["tmp_selected_sub"]
+            st.session_state.pop("pref_note_type", None)
+            st.session_state.pop("tmp_selected_sub", None)
             st.rerun()
-            
+
     with col2:
-        if st.button("추천 결과 보기 🎯", type="primary", use_container_width=True, key="submit_pref"):
-            st.session_state["pref_additional_categories"] = [st.session_state["tmp_selected_sub"]]
-            
+        if st.button(
+            "추천 결과 보기 🎯",
+            type="primary",
+            use_container_width=True,
+            key="submit_pref",
+            disabled=not current_selected_sub,
+        ):
+            st.session_state["pref_additional_categories"] = [current_selected_sub]
+
             with st.spinner("선택하신 노트를 바탕으로 가중치 점수를 연산하고 있습니다..."):
                 try:
                     # 백엔드 데이터베이스 호출 및 연산 가동
@@ -265,9 +347,33 @@ elif current_step == 5:
             st.code(db_err)
     else:
         st.success("🎉 분석이 완료되었습니다! 당신의 선호도를 바탕으로 DB에서 실시간 집계된 결과입니다.")
+
+    history_err = st.session_state.get("history_save_error")
+    if history_err and is_logged_in():
+        st.warning(
+            "추천 이력을 DB에 저장하지 못했습니다. "
+            "Supabase에서 `sql/member_data_rls.sql` 실행 후 다시 시도해 주세요."
+        )
+        with st.expander("이력 저장 오류 상세"):
+            st.code(history_err)
+
     st.write("")
     
     recs = st.session_state.get("recommendations", [])
+    reco_context = st.session_state.get("recommendation_context") or st.session_state.get("test_summary")
+
+    show_reasons = st.checkbox(
+        "추천 이유 보기",
+        help="선택한 취향과 각 향수 노트가 어떻게 맞는지 표시합니다.",
+        key="show_recommendation_reasons",
+    )
+
+    saved_ids: set[int] = set()
+    if is_logged_in():
+        try:
+            saved_ids = favorite_repository.get_saved_perfume_ids(st.session_state["user_id"])
+        except Exception:
+            saved_ids = set()
     
     # 예외 상황이나 데이터가 없을 때 UI 전시용 샘플 데이터 (테스트용)
     if not recs:
@@ -289,8 +395,24 @@ elif current_step == 5:
         google_search_url = f"https://www.google.com/search?q={search_keyword}"
 
         with st.container(border=True):
-            st.markdown(f"### [{idx+1}. {p_name}]({google_search_url})")
+            title_cols = st.columns([11, 1])
+            with title_cols[0]:
+                st.markdown(f"### [{idx+1}. {p_name}]({google_search_url})")
+            with title_cols[1]:
+                render_favorite_star(p_perfume_id, saved_ids, key_prefix=f"pref_res_{idx}")
+
             st.caption(f"브랜드: **{p_brand}** | 🔗 이름을 누르면 구글 검색으로 이동합니다.")
+
+            if show_reasons:
+                reasons = build_recommendation_reasons(
+                    p_perfume_id,
+                    reco_context,
+                    perfume.get("recommendation_score") or perfume.get("score"),
+                )
+                if reasons:
+                    st.markdown("**추천 이유**")
+                    for reason in reasons:
+                        st.markdown(f"- {reason}")
 
             with st.expander("🔍 이 향수의 세부 정보 및 특징 보기"):
                 if p_perfume_id:
@@ -310,7 +432,10 @@ elif current_step == 5:
                     st.markdown(p_desc.replace("\n", "\n\n"))
 
                 mood_text = perfume_repository.build_perfume_mood(
-                    p_perfume_id, summary_for_mood
+                    p_perfume_id,
+                    summary_for_mood,
+                    perfume_name=p_name,
+                    brand_name=p_brand,
                 )
                 st.markdown("**무드**")
                 st.write(mood_text)
@@ -319,7 +444,11 @@ elif current_step == 5:
     
     # 다시 하기 버튼으로 세션 초기화 및 1단계 복귀
     if st.button("🔄 취향 분석 처음부터 다시 하기", type="secondary", use_container_width=True, key="restart_test"):
-        st.session_state["pref_step"] = 1
-        if "db_error_msg" in st.session_state:
-            st.session_state["db_error_msg"] = None
+        reset_preference_wizard()
+        for key in ("tmp_selected_main", "tmp_selected_detail", "tmp_selected_note", "tmp_selected_sub"):
+            st.session_state.pop(key, None)
+        st.session_state.pop("db_error_msg", None)
         st.rerun()
+
+    if st.button("🏠 메인 화면으로 가기", use_container_width=True, key="go_home"):
+        st.switch_page("app.py")

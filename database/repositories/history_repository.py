@@ -1,8 +1,9 @@
-from database.supabase_client import get_supabase
+from database.supabase_client import ensure_authenticated_session, get_supabase
 from utils.constants import NOTE_TYPE_LABELS
 
 
 def list_user_tests(user_id: str) -> list[dict]:
+    ensure_authenticated_session()
     response = (
         get_supabase()
         .table("user_preference_tests")
@@ -15,6 +16,7 @@ def list_user_tests(user_id: str) -> list[dict]:
 
 
 def get_test_summary(test_id: int) -> dict | None:
+    ensure_authenticated_session()
     main_response = (
         get_supabase()
         .table("user_test_main_choice")

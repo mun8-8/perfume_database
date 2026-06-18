@@ -5,15 +5,22 @@ import streamlit as st
 from database.repositories import (
     favorite_repository,
     history_repository,
-    perfume_repository,
-    recommendation_repository,
     user_repository,
 )
+from database.supabase_client import ensure_authenticated_session
 from services import auth_service
 from utils.session import clear_auth, init_session, is_logged_in
+from utils.theme import apply_page_theme
+from utils.ui_helpers import (
+    inject_history_date_styles,
+    render_favorite_list_item,
+    render_history_recommendations,
+    toggle_history_test,
+)
 
 st.set_page_config(page_title="프로필", layout="wide")
 init_session()
+apply_page_theme()
 
 if not is_logged_in():
     st.warning("프로필은 로그인한 회원만 이용할 수 있습니다.")
@@ -21,6 +28,7 @@ if not is_logged_in():
         st.switch_page("pages/01_auth.py")
     st.stop()
 
+ensure_authenticated_session()
 user_id = st.session_state["user_id"]
 
 header_cols = st.columns([5, 1])
@@ -60,20 +68,9 @@ else:
         perfume_id = perfume.get("perfume_id")
         name = perfume.get("perfume_name", "이름 없음")
         brand = perfume.get("brand_name", "")
-
-        with st.container(border=True):
-            cols = st.columns([5, 1, 1])
-            with cols[0]:
-                st.markdown(f"**{name}**")
-                if brand:
-                    st.caption(brand)
-            with cols[1]:
-                url = perfume_repository.google_search_url(name, brand)
-                st.link_button("검색", url)
-            with cols[2]:
-                if perfume_id and st.button("☆", key=f"unsave_{perfume_id}"):
-                    favorite_repository.remove_saved_perfume(user_id, perfume_id)
-                    st.rerun()
+        render_favorite_list_item(
+            perfume_id, name, brand, user_id, key_prefix=f"fav_{perfume_id}"
+        )
 
 st.divider()
 st.subheader("이전 추천 결과")
@@ -89,6 +86,9 @@ except Exception as exc:
 if not tests:
     st.caption("이전 추천 기록이 없습니다.")
 else:
+    inject_history_date_styles()
+    saved_ids = favorite_repository.get_saved_perfume_ids(user_id)
+
     for test in tests:
         test_id = test["test_id"]
         created_at = test.get("created_at", "")
@@ -100,65 +100,43 @@ else:
 
         summary = history_repository.get_test_summary(test_id)
         summary_line = summary["summary_line"] if summary else "선택 정보 없음"
-
-        row_cols = st.columns([4, 1])
-        with row_cols[0]:
-            st.markdown(f"**{date_label}**")
-            st.write(summary_line)
-        with row_cols[1]:
-            if st.button("결과 보기", key=f"hist_{test_id}"):
-                st.session_state["view_history_test_id"] = test_id
-                st.rerun()
-
-if view_test_id:
-    st.markdown("---")
-    st.markdown("#### 해당 시점 추천 향수")
-    summary = history_repository.get_test_summary(view_test_id)
-    if summary:
-        st.write(summary["summary_line"])
-
-    try:
-        rows = recommendation_repository.get_recommendations_by_test(view_test_id)
-    except Exception as exc:
-        st.error(f"추천 결과 조회 실패: {exc}")
-        rows = []
-
-    saved_ids = favorite_repository.get_saved_perfume_ids(user_id)
-    for idx, row in enumerate(rows, start=1):
-        perfume = row.get("perfumes") or {}
-        score = row.get("recommendation_score", 0)
-        name = perfume.get("perfume_name", "이름 없음")
-        brand = perfume.get("brand_name", "")
-        perfume_id = perfume.get("perfume_id")
+        is_open = view_test_id == test_id
 
         with st.container(border=True):
-            st.markdown(f"**{idx}. {name}**")
-            if brand:
-                st.caption(brand)
-            st.metric("추천 점수", score)
-            if perfume_id:
-                cols = st.columns([1, 1])
-                with cols[0]:
-                    st.link_button(
-                        "Google 검색",
-                        perfume_repository.google_search_url(name, brand),
-                        key=f"hist_search_{view_test_id}_{perfume_id}",
-                    )
-                with cols[1]:
-                    is_saved = perfume_id in saved_ids
-                    if st.button(
-                        "★" if is_saved else "☆",
-                        key=f"hist_fav_{view_test_id}_{perfume_id}",
-                    ):
-                        if is_saved:
-                            favorite_repository.remove_saved_perfume(user_id, perfume_id)
-                        else:
-                            favorite_repository.save_perfume(user_id, perfume_id)
-                        st.rerun()
+            header_cols = st.columns([11, 1])
+            with header_cols[0]:
+                if st.button(
+                    date_label,
+                    key=f"hist_date_{test_id}",
+                    type="tertiary",
+                    help="클릭하면 추천 향수를 펼칩니다",
+                ):
+                    toggle_history_test(test_id)
+                    st.rerun()
+            with header_cols[1]:
+                toggle_icon = "▲" if is_open else "▼"
+                toggle_help = "추천 향수 접기" if is_open else "추천 향수 펼치기"
+                if st.button(
+                    toggle_icon,
+                    key=f"hist_toggle_{test_id}",
+                    type="tertiary",
+                    help=toggle_help,
+                ):
+                    toggle_history_test(test_id)
+                    st.rerun()
 
-    if st.button("이력 상세 닫기"):
-        st.session_state.pop("view_history_test_id", None)
-        st.rerun()
+            st.write(summary_line)
+
+            if is_open:
+                render_history_recommendations(test_id, user_id, saved_ids)
+                if st.button(
+                    "▲",
+                    key=f"hist_collapse_{test_id}",
+                    type="tertiary",
+                    help="추천 향수 접기",
+                ):
+                    st.session_state["view_history_test_id"] = None
+                    st.rerun()
 
 st.divider()
 if st.button("로그아웃", type="primary"):
@@ -171,4 +149,5 @@ if st.button("로그아웃", type="primary"):
     st.session_state.pop("recommendations", None)
     st.session_state.pop("test_summary", None)
     st.session_state.pop("view_history_test_id", None)
+    st.session_state.pop("history_save_error", None)
     st.switch_page("app.py")

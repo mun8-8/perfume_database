@@ -1,7 +1,8 @@
-from database.supabase_client import get_supabase
+from database.supabase_client import ensure_authenticated_session, get_supabase
 
 
 def create_user_preference_test(user_id: str | None = None) -> int:
+    ensure_authenticated_session()
     payload: dict = {}
     if user_id is not None:
         payload["user_id"] = user_id
@@ -18,6 +19,7 @@ def save_main_choice(
     scent_id: int,
     preferred_note_type: str,
 ) -> None:
+    ensure_authenticated_session()
     get_supabase().table("user_test_main_choice").insert(
         {
             "test_id": test_id,
@@ -32,5 +34,6 @@ def save_additional_categories(test_id: int, category_ids: list[int]) -> None:
     if not category_ids:
         return
 
+    ensure_authenticated_session()
     rows = [{"test_id": test_id, "category_id": cid} for cid in category_ids]
     get_supabase().table("user_test_additional_categories").insert(rows).execute()
