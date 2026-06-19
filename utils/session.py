@@ -72,6 +72,39 @@ def set_member(
     st.session_state["refresh_token"] = refresh_token
 
 
+def clear_test_session() -> None:
+    """취향 테스트·추천 결과 관련 세션 초기화."""
+    reset_preference_wizard()
+    for key in (
+        "test_id",
+        "recommendations",
+        "test_summary",
+        "recommendation_context",
+        "history_save_error",
+        "view_history_test_id",
+        "db_error_msg",
+        "tmp_selected_main",
+        "tmp_selected_detail",
+        "tmp_selected_note",
+        "tmp_selected_sub",
+        "_pending_wizard_reset",
+    ):
+        st.session_state.pop(key, None)
+
+
+def start_with_different_account() -> None:
+    """다른 계정으로 시작 — 로그아웃 후 테스트·추천 결과까지 초기화."""
+    if is_logged_in():
+        from services.auth_service import sign_out
+
+        sign_out(
+            st.session_state.get("access_token"),
+            st.session_state.get("refresh_token"),
+        )
+    clear_auth()
+    clear_test_session()
+
+
 def clear_auth() -> None:
     set_guest()
     st.session_state["auth_mode"] = None
@@ -84,3 +117,9 @@ def reset_preference_wizard() -> None:
     st.session_state["pref_note_type"] = None
     st.session_state["pref_additional_categories"] = None
     st.session_state["show_recommendation_reasons"] = False
+    st.session_state.pop("show_recommendation_reasons_widget", None)
+
+
+def request_preference_wizard_reset() -> None:
+    """위젯 렌더 후 session_state 수정 오류를 피하기 위해 다음 rerun 에서 초기화."""
+    st.session_state["_pending_wizard_reset"] = True

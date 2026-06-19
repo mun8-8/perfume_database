@@ -16,7 +16,7 @@ from utils.scent_descriptions import (
     scent_english_label,
 )
 from utils.scent_theme import CATEGORY_SLUG, detail_slug
-from utils.session import has_auth, init_session, current_user_id, is_logged_in, reset_preference_wizard
+from utils.session import has_auth, init_session, current_user_id, is_logged_in, reset_preference_wizard, request_preference_wizard_reset
 from utils.theme import apply_page_theme, inject_theme_styles
 from utils.recommendation_reasons import build_recommendation_reasons
 from utils.ui_helpers import (
@@ -33,6 +33,13 @@ st.set_page_config(
     layout="centered"
 )
 init_session()
+
+if st.session_state.pop("_pending_wizard_reset", False):
+    reset_preference_wizard()
+    for key in ("tmp_selected_main", "tmp_selected_detail", "tmp_selected_note", "tmp_selected_sub"):
+        st.session_state.pop(key, None)
+    st.session_state.pop("db_error_msg", None)
+
 apply_page_theme()
 
 if not has_auth():
@@ -300,6 +307,7 @@ elif current_step == 4:
                     st.session_state["test_id"] = test_id
                     st.session_state["recommendations"] = recommendations
                     st.session_state["show_recommendation_reasons"] = False
+                    st.session_state.pop("show_recommendation_reasons_widget", None)
 
                     # ✨ 성공 시 완전히 독립된 단계인 '5단계'로 세팅 후 화면 갱신!
                     st.session_state["pref_step"] = 5
@@ -363,12 +371,23 @@ elif current_step == 5:
     recs = st.session_state.get("recommendations", [])
     reco_context = st.session_state.get("recommendation_context") or st.session_state.get("test_summary")
 
-    show_reasons = st.checkbox(
+    if "show_recommendation_reasons" not in st.session_state:
+        st.session_state["show_recommendation_reasons"] = False
+    if "show_recommendation_reasons_widget" not in st.session_state:
+        st.session_state["show_recommendation_reasons_widget"] = st.session_state[
+            "show_recommendation_reasons"
+        ]
+
+    st.checkbox(
         "추천 이유 보기",
-        value=False,
+        value=st.session_state["show_recommendation_reasons"],
         help="선택한 취향과 각 향수 노트가 어떻게 맞는지 표시합니다.",
-        key="show_recommendation_reasons",
+        key="show_recommendation_reasons_widget",
     )
+    st.session_state["show_recommendation_reasons"] = st.session_state[
+        "show_recommendation_reasons_widget"
+    ]
+    show_reasons = st.session_state["show_recommendation_reasons"]
 
     saved_ids: set[int] = set()
     if is_logged_in():
@@ -445,10 +464,7 @@ elif current_step == 5:
     
     # 다시 하기 버튼으로 세션 초기화 및 1단계 복귀
     if st.button("🔄 취향 분석 처음부터 다시 하기", type="secondary", use_container_width=True, key="restart_test"):
-        reset_preference_wizard()
-        for key in ("tmp_selected_main", "tmp_selected_detail", "tmp_selected_note", "tmp_selected_sub"):
-            st.session_state.pop(key, None)
-        st.session_state.pop("db_error_msg", None)
+        request_preference_wizard_reset()
         st.rerun()
 
     if st.button("🏠 메인 화면으로 가기", use_container_width=True, key="go_home"):

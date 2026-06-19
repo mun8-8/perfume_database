@@ -48,9 +48,9 @@ if has_auth():
     mode = "회원" if is_logged_in() else "비회원"
     st.caption(f"현재 접속 상태: {mode}")
     if st.button("다른 계정으로 시작"):
-        from utils.session import clear_auth
+        from utils.session import start_with_different_account
 
-        clear_auth()
+        start_with_different_account()
         st.rerun()
 
 with st.expander("개발/실행 정보"):

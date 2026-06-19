@@ -9,7 +9,7 @@ from database.repositories import (
 )
 from database.supabase_client import ensure_authenticated_session
 from services.auth_service import auth_service
-from utils.session import clear_auth, init_session, is_logged_in
+from utils.session import clear_auth, clear_test_session, init_session, is_logged_in
 from utils.theme import apply_page_theme
 from utils.ui_helpers import (
     inject_history_date_styles,
@@ -189,9 +189,5 @@ if st.button("로그아웃", type="primary"):
         st.session_state.get("refresh_token"),
     )
     clear_auth()
-    st.session_state.pop("test_id", None)
-    st.session_state.pop("recommendations", None)
-    st.session_state.pop("test_summary", None)
-    st.session_state.pop("view_history_test_id", None)
-    st.session_state.pop("history_save_error", None)
+    clear_test_session()
     st.switch_page("app.py")
