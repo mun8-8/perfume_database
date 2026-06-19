@@ -27,8 +27,11 @@ def format_auth_error(exc: Exception) -> str:
     if "row-level security" in msg:
         return (
             "프로필 저장 권한(RLS) 오류입니다. "
-            "Supabase SQL Editor에서 `sql/fix_users_rls.sql` 파일 내용을 실행해 주세요."
+            "Supabase SQL Editor에서 `sql/fix_users_rls.sql` 파일 내용을 실행한 뒤, "
+            "로그아웃 후 다시 로그인해 주세요."
         )
+    if "not authenticated" in msg or "로그인 세션이" in raw:
+        return raw
     if "user not found" in msg:
         return "등록되지 않은 이메일입니다."
     return raw
@@ -61,6 +64,13 @@ class AuthService:
         try:
             change_password(new_password)
             return True, "비밀번호가 변경되었습니다."
+        except Exception as exc:
+            return False, format_auth_error(exc)
+
+    def change_nickname(self, new_nickname: str) -> tuple[bool, str]:
+        try:
+            change_nickname(new_nickname)
+            return True, "닉네임이 변경되었습니다."
         except Exception as exc:
             return False, format_auth_error(exc)
 
@@ -168,3 +178,26 @@ def change_password(new_password: str) -> None:
         raise ValueError("비밀번호는 최소 6자 이상이어야 합니다.")
     ensure_authenticated_session()
     get_supabase().auth.update_user({"password": new_password})
+
+
+def change_nickname(new_nickname: str) -> None:
+    import streamlit as st
+
+    nickname = new_nickname.strip()
+    if not nickname:
+        raise ValueError("닉네임을 입력해 주세요.")
+    if len(nickname) > 100:
+        raise ValueError("닉네임은 100자 이하로 입력해 주세요.")
+
+    ensure_authenticated_session()
+    user_id = st.session_state.get("user_id")
+    email = st.session_state.get("user_email") or ""
+    if not user_id:
+        raise RuntimeError("로그인 세션이 없습니다.")
+
+    user_repository.update_nickname(user_id, email, nickname)
+    try:
+        get_supabase().auth.update_user({"data": {"nickname": nickname}})
+    except Exception:
+        pass
+    st.session_state["user_nickname"] = nickname

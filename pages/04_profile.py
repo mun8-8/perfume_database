@@ -51,6 +51,29 @@ st.subheader("계정 정보")
 st.write(f"**닉네임:** {nickname}")
 st.write(f"**이메일:** {email}")
 
+with st.expander("닉네임 변경", expanded=False):
+    with st.form("change_nickname_form"):
+        new_nickname = st.text_input(
+            "새 닉네임",
+            value=nickname,
+            placeholder="앱에서 표시될 이름",
+            max_chars=100,
+        ).strip()
+        submit_nick = st.form_submit_button("닉네임 저장", use_container_width=True)
+
+    if submit_nick:
+        if not new_nickname:
+            st.error("닉네임을 입력해 주세요.")
+        elif new_nickname == nickname:
+            st.info("변경된 내용이 없습니다.")
+        else:
+            ok, msg = auth_service.change_nickname(new_nickname)
+            if ok:
+                st.success(msg)
+                st.rerun()
+            else:
+                st.error(msg)
+
 with st.expander("비밀번호 변경", expanded=False):
     st.caption("로그인 상태에서 이메일 인증 없이 변경할 수 있습니다.")
     with st.form("change_password_form"):

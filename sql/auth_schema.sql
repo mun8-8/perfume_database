@@ -80,8 +80,38 @@ BEGIN
   VALUES (auth.uid(), p_email, p_nickname)
   ON CONFLICT (user_id) DO UPDATE
     SET email = EXCLUDED.email,
-        nickname = COALESCE(EXCLUDED.nickname, public.users.nickname);
+        nickname = EXCLUDED.nickname;
 END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.upsert_user_profile(TEXT, TEXT) TO authenticated;
+
+-- 5) 닉네임 변경 RPC (RLS 우회)
+CREATE OR REPLACE FUNCTION public.update_user_nickname(p_nickname TEXT)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'not authenticated';
+  END IF;
+  IF p_nickname IS NULL OR trim(p_nickname) = '' THEN
+    RAISE EXCEPTION 'nickname required';
+  END IF;
+
+  UPDATE public.users
+  SET nickname = trim(p_nickname)
+  WHERE user_id = auth.uid();
+
+  IF NOT FOUND THEN
+    INSERT INTO public.users (user_id, email, nickname)
+    SELECT auth.uid(), u.email, trim(p_nickname)
+    FROM auth.users u
+    WHERE u.id = auth.uid();
+  END IF;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.update_user_nickname(TEXT) TO authenticated;

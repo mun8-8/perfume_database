@@ -20,12 +20,20 @@ def get_supabase() -> Client:
 
 
 def ensure_authenticated_session() -> None:
-    """로그인 JWT 를 클라이언트에 설정해 RLS INSERT/SELECT 가 동작하게 합니다."""
+    """로그인 JWT 를 클라이언트에 설정해 RLS INSERT/SELECT/UPDATE 가 동작하게 합니다."""
     access = st.session_state.get("access_token")
     refresh = st.session_state.get("refresh_token")
     if not access or not refresh:
-        return
+        raise RuntimeError("로그인 세션이 만료되었습니다. 다시 로그인해 주세요.")
+
     try:
-        get_supabase().auth.set_session(access, refresh)
-    except Exception:
-        pass
+        response = get_supabase().auth.set_session(access, refresh)
+    except Exception as exc:
+        raise RuntimeError("로그인 세션이 만료되었습니다. 다시 로그인해 주세요.") from exc
+
+    session = response.session
+    if not session:
+        raise RuntimeError("로그인 세션이 만료되었습니다. 다시 로그인해 주세요.")
+
+    st.session_state["access_token"] = session.access_token
+    st.session_state["refresh_token"] = session.refresh_token
