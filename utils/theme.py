@@ -4,11 +4,19 @@ from __future__ import annotations
 
 import streamlit as st
 
-from utils.session import init_session
+_DARK_MODE_WIDGET_KEY = "dark_mode_widget"
+
+
+def _ensure_dark_mode_state() -> None:
+    if "dark_mode" not in st.session_state:
+        st.session_state["dark_mode"] = False
+    if _DARK_MODE_WIDGET_KEY not in st.session_state:
+        st.session_state[_DARK_MODE_WIDGET_KEY] = st.session_state["dark_mode"]
 
 
 def inject_theme_styles() -> None:
-    if not st.session_state.get("dark_mode"):
+    _ensure_dark_mode_state()
+    if not st.session_state["dark_mode"]:
         return
 
     st.markdown(
@@ -82,11 +90,17 @@ def inject_theme_styles() -> None:
 
 def render_theme_toggle(location: str = "sidebar") -> None:
     """다크 모드 토글 — sidebar 또는 상단."""
-    st.session_state.setdefault("dark_mode", False)
+    _ensure_dark_mode_state()
 
     target = st.sidebar if location == "sidebar" else st
     with target:
-        st.toggle("🌙 다크 모드", key="dark_mode")
+        st.toggle(
+            "🌙 다크 모드",
+            value=st.session_state["dark_mode"],
+            key=_DARK_MODE_WIDGET_KEY,
+        )
+
+    st.session_state["dark_mode"] = st.session_state[_DARK_MODE_WIDGET_KEY]
 
 
 def apply_page_theme(*, toggle_in_sidebar: bool = True) -> None:

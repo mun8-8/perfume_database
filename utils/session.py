@@ -20,7 +20,6 @@ def init_session() -> None:
         "pref_note_type": None,
         "pref_additional_categories": None,
         "perf_result_ready": False,
-        "dark_mode": False,
         "show_recommendation_reasons": False,
         "recommendation_context": None,
     }

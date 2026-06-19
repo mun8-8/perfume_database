@@ -17,7 +17,7 @@ from utils.scent_descriptions import (
 )
 from utils.scent_theme import CATEGORY_SLUG, detail_slug
 from utils.session import has_auth, init_session, current_user_id, is_logged_in, reset_preference_wizard
-from utils.theme import apply_page_theme
+from utils.theme import apply_page_theme, inject_theme_styles
 from utils.recommendation_reasons import build_recommendation_reasons
 from utils.ui_helpers import (
     render_favorite_star,
@@ -453,3 +453,6 @@ elif current_step == 5:
 
     if st.button("🏠 메인 화면으로 가기", use_container_width=True, key="go_home"):
         st.switch_page("app.py")
+
+# 단계 이동·rerun 후에도 다크 모드 CSS 유지
+inject_theme_styles()
