@@ -299,7 +299,8 @@ elif current_step == 4:
                     
                     st.session_state["test_id"] = test_id
                     st.session_state["recommendations"] = recommendations
-                    
+                    st.session_state["show_recommendation_reasons"] = False
+
                     # ✨ 성공 시 완전히 독립된 단계인 '5단계'로 세팅 후 화면 갱신!
                     st.session_state["pref_step"] = 5
                     if "tmp_selected_sub" in st.session_state:
@@ -364,6 +365,7 @@ elif current_step == 5:
 
     show_reasons = st.checkbox(
         "추천 이유 보기",
+        value=False,
         help="선택한 취향과 각 향수 노트가 어떻게 맞는지 표시합니다.",
         key="show_recommendation_reasons",
     )
@@ -391,8 +393,7 @@ elif current_step == 5:
         p_desc = perfume.get("description", "")
         summary_for_mood = st.session_state.get("test_summary")
 
-        search_keyword = f"{p_brand} {p_name}".replace(" ", "+")
-        google_search_url = f"https://www.google.com/search?q={search_keyword}"
+        google_search_url = perfume_repository.google_search_url(p_name, p_brand)
 
         with st.container(border=True):
             title_cols = st.columns([11, 1])

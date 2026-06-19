@@ -21,7 +21,7 @@ def init_session() -> None:
         "pref_additional_categories": None,
         "perf_result_ready": False,
         "dark_mode": False,
-        "show_recommendation_reasons": True,
+        "show_recommendation_reasons": False,
         "recommendation_context": None,
     }
     for key, value in defaults.items():
@@ -84,3 +84,4 @@ def reset_preference_wizard() -> None:
     st.session_state["pref_main_scent"] = None
     st.session_state["pref_note_type"] = None
     st.session_state["pref_additional_categories"] = None
+    st.session_state["show_recommendation_reasons"] = False

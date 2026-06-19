@@ -120,4 +120,4 @@ def google_search_url(perfume_name: str, brand_name: str = "") -> str:
     from urllib.parse import quote_plus
 
     query = f"{brand_name} {perfume_name}".strip()
-    return f"https://www.google.com/search?q={quote_plus(query)}"
+    return f"https://www.google.com/search?q={quote_plus(query)}&hl=ko"
